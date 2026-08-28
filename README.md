@@ -1,7 +1,7 @@
 # gitops-app
 
 A Java web application and the CI pipeline that builds it. On every push to
-`main`, GitHub Actions builds the image, scans it, pushes it to ECR and then
+`main`, GitHub Actions builds the image, scans it, pushes it to ECR and
 commits the new image tag to a separate config repo, which ArgoCD picks up
 and deploys.
 
@@ -13,34 +13,37 @@ Part of a three repo GitOps project:
   for the VPC and EKS cluster
 
 The application is a multi tier Java app (Tomcat, MySQL, RabbitMQ, Memcached)
-based on an open source reference project. The focus here is the pipeline, not
-the app code.
+based on an open source reference project. The focus here is the pipeline
+and not the app code.
 
 ## CI pipeline
 
-Two paths, depending on the event:
+Every push to `main` runs two stages:
 
-**On pull request** - build, unit tests, Checkstyle, SonarQube scan and a
-quality gate that blocks the PR if it fails.
+1. **Build, test, quality gate.** Unit tests, Checkstyle and a SonarQube scan
+   with a quality gate. If this fails, nothing gets built or deployed.
+2. **Build, scan, push, deploy.** Builds the app and database images, scans
+   both with Trivy, pushes to ECR, then updates the image tags in the config
+   repo with `yq`.
 
-**On push to `main`:**
+CI never talks to the cluster directly. It only changes what's declared in
+Git and ArgoCD reconciles the cluster to match.
 
-1. Build two images: the app (multi stage, compiled from this repo's source)
-   and the database (MySQL seeded with the app schema).
-2. Scan both with Trivy, failing on fixable HIGH/CRITICAL vulnerabilities.
-3. Push to ECR, tagged with the short commit SHA.
-4. Clone the config repo, update the image names and tags in the Helm values
-   with `yq` and commit.
+![CI pipeline](screenshots/ci-pipeline.png)
 
-Step 4 is what makes this GitOps rather than a direct deploy: CI never talks
-to the cluster. It only changes what's declared in Git and ArgoCD reconciles
-the cluster to match.
+## Live access
+
+The app runs behind an ALB and syncs through ArgoCD.
+
+![Pods running](screenshots/pods.png)
+![ArgoCD synced](screenshots/argocd-synced.png)
+![ArgoCD resource tree](screenshots/argocd-resource-tree.png)
 
 ## Configuration
 
 No credentials are committed. `application.properties` reads database,
-RabbitMQ and admin credentials from environment variables, which are
-supplied as Kubernetes secrets at deploy time.
+RabbitMQ and admin credentials from environment variables, supplied as
+Kubernetes secrets at deploy time.
 
 The CI workflow expects these repository secrets:
 
